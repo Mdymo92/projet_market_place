@@ -1,0 +1,33 @@
+groups:
+  - name: platform
+    rules:
+      - alert: ServiceDown
+        expr: up{job="services"} == 0
+        for: 10s
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.instance }} is down"
+
+      - alert: ServiceDegradedErrors
+        expr: |
+          sum by (instance) (rate(http_requests_total{job="services", status=~"5.."}[1m]))
+            / sum by (instance) (rate(http_requests_total{job="services"}[1m])) > 0.01
+        for: 30s
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }} error rate above 1 %"
+
+      - alert: ServiceDegradedLatency
+        expr: |
+          histogram_quantile(0.95, sum by (le, instance) (rate(http_request_duration_seconds_bucket{job="services"}[1m]))) > 0.5
+        for: 30s
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }} p95 latency above 500 ms"
+
+      - alert: KafkaConsumerLagHigh
+        expr: sum by (consumergroup) (kafka_consumergroup_lag) > 1000
+        for: 30s
+        labels: { severity: warning }
+        annotations:
+          summary: "Consumer group {{ $labels.consumergroup }} lag above 1000 messages"

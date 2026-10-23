@@ -1,0 +1,133 @@
+# Kong DB-less config. Rendered to kong.yml at startup by the kong-config container
+# (__JWT_SECRET__ and __JWT_ISSUER__ are replaced from .env, so no secret lives in the repo).
+#
+# Kong checks WHO calls (valid, unexpired JWT -> else 401) and limits calls.
+# Each service checks WHAT the caller may do (role in the JWT -> else 403).
+_format_version: "3.0"
+
+consumers:
+  - username: market-auth
+    jwt_secrets:
+      - key: __JWT_ISSUER__          # must match the "iss" claim of tokens
+        algorithm: HS256
+        secret: __JWT_SECRET__
+
+plugins:
+  - name: prometheus                 # gateway metrics for Grafana
+    config:
+      status_code_metrics: true
+      latency_metrics: true
+      per_consumer: false
+  - name: correlation-id
+    config:
+      header_name: X-Request-ID
+      generator: uuid
+      echo_downstream: true
+  - name: cors
+    config:
+      origins: ["http://localhost:5173"]
+      headers: ["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"]
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+services:
+  # ---- public: login and refresh only
+  - name: auth-public
+    url: http://auth:8000
+    routes:
+      - name: auth-login
+        paths: ["/v1/auth/login", "/v1/auth/refresh"]
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config: { minute: 20, policy: local }   # slows down password guessing
+
+  # ---- everything below requires a valid JWT
+  - name: auth-admin
+    url: http://auth:8000
+    routes:
+      - name: auth-admin
+        paths: ["/v1/admin", "/v1/auth/me"]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: ["exp"]
+          header_names: ["authorization"]
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
+
+  - name: orders
+    url: http://orders:8000
+    routes:
+      - name: orders
+        paths: ["/v1/orders"]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: ["exp"]
+          header_names: ["authorization"]
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
+
+  - name: inventory
+    url: http://inventory:8000
+    routes:
+      - name: inventory
+        paths: ["/v1/inventory", "/v1/warehouses"]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: ["exp"]
+          header_names: ["authorization"]
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
+
+  - name: payment
+    url: http://payment:8000
+    routes:
+      - name: payment
+        paths: ["/v1/payments"]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: ["exp"]
+          header_names: ["authorization"]
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
+
+  - name: catalog
+    url: http://catalog:8000
+    routes:
+      - name: catalog-graphql
+        paths: ["/graphql"]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: ["exp"]
+          header_names: ["authorization"]
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
+
+  - name: dashboard
+    url: http://dashboard:8000
+    routes:
+      - name: dashboard
+        paths: ["/v1/dashboard"]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify: ["exp"]
+          header_names: ["authorization"]
+      - name: rate-limiting
+        config: { minute: 600, policy: local }
