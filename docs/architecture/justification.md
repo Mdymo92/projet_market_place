@@ -37,7 +37,7 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
 
 ### FastAPI (Python)
 
-- **Rôle :** les six services : Auth, Orders, Inventory, Payment, Catalog, Dashboard API.
+- **Rôle :** les six services : Auth, Orders, Inventory, Payment, Catalog, Dashboard API. Le Dashboard API ne lit aucune base de service : il lit le lake, l'API du service Stock et Prometheus.
 - **Pourquoi :** même langage que les traitements Spark ; génération OpenAPI et validation des entrées (Pydantic) intégrées ; fonctionnement asynchrone, utile pour les timeouts et pour limiter les appels simultanés (bulkhead).
 - **Écarté :** Spring Boot, robuste mais qui ajouterait un deuxième langage à maîtriser.
 
@@ -55,6 +55,7 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
 ### Catalogue en GraphQL, schéma d'abord (Ariadne)
 
 - **Pourquoi :** le sujet impose l'approche « contrat d'abord » ; avec Ariadne, le fichier `schema.graphql` est le contrat et le code s'y conforme. GraphQL convient au catalogue car les attributs varient selon la catégorie : l'interface demande seulement les champs qu'elle affiche.
+- **CRUD complet :** créer, lire, modifier, archiver, supprimer. Le `product_id` est attribué par le service (compteur MongoDB). À la création, Catalog crée les lignes de stock via l'API du service Stock. Un produit déjà commandé n'est jamais supprimé mais archivé (`status: inactive`), ce que Catalog vérifie auprès du service Commandes.
 - **Écarté :** Strawberry, où le schéma est déduit du code (l'inverse de ce qui est demandé).
 
 ### Saga orchestrée par le service Orders
@@ -85,7 +86,7 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
   - verrou de ligne (`SELECT ... FOR UPDATE`) : le dernier article n'est vendu qu'une fois ;
   - partitionnement natif de la table des commandes par mois, pour garder des requêtes rapides quand le volume grossit.
 - **Théorème CAP :** pour l'argent et le stock, on privilégie la cohérence. Afficher un stock faux reviendrait à vendre ce qu'on n'a pas.
-- **Isolation :** un schéma et un rôle par service. Le rôle `orders_svc` ne peut pas lire `inventory` (vérifié par la CI). Un rôle `analytics_reader` en lecture seule sert au tableau de bord et à l'extraction vers le lake (ADR-003).
+- **Isolation :** un schéma et un rôle par service. Le rôle `orders_svc` ne peut pas lire `inventory` (vérifié par la CI). Le tableau de bord lit le stock restant par l'API du service Stock, pas dans sa base. Seule l'extraction batch vers le lake utilise un rôle `analytics_reader` en lecture seule (ADR-003).
 - **Écarté :** MongoDB et Cassandra, en cohérence finale, où l'intégrité serait laissée au code.
 
 ### MongoDB : catalogue produits

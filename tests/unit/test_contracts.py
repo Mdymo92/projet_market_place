@@ -57,4 +57,5 @@ def test_service_routes_match_openapi(service):
 def test_graphql_schema_loads():
     mod = load_service("catalog")
     assert "products" in mod.schema.query_type.fields
-    assert "updateProduct" in mod.schema.mutation_type.fields
+    for name in ("createProduct", "updateProduct", "archiveProduct", "deleteProduct"):
+        assert name in mod.schema.mutation_type.fields

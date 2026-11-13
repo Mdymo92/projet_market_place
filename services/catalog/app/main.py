@@ -96,13 +96,28 @@ def resolve_categories(_, info):
 @mutation.field("createProduct")
 def resolve_create(_, info, input):
     _check(info, "catalog:write")
-    raise GraphQLError("not implemented yet: insert product")
+    raise GraphQLError(
+        "not implemented yet: productId from counters (findOneAndUpdate $inc), insert, "
+        "then PUT /v1/inventory/{productId} for each warehouse"
+    )
 
 
 @mutation.field("updateProduct")
 def resolve_update(_, info, productId, input):
     _check(info, "catalog:write")
     raise GraphQLError("not implemented yet: update product + publish product_updated")
+
+
+@mutation.field("archiveProduct")
+def resolve_archive(_, info, productId):
+    _check(info, "catalog:write")
+    raise GraphQLError("not implemented yet: set status inactive")
+
+
+@mutation.field("deleteProduct")
+def resolve_delete(_, info, productId):
+    _check(info, "catalog:write")
+    raise GraphQLError("not implemented yet: ask Orders if the product was ordered; delete or archive")
 
 
 schema = make_executable_schema(load_schema_from_path(str(SCHEMA_PATH)), query, mutation, json_scalar, datetime_scalar)

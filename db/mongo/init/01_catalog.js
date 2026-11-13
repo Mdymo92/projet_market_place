@@ -54,4 +54,7 @@ market.catalog.insertMany([
   p(12, "Clavier Mecanique K1", "Informatique", 9990, { switches: "brown", disposition: "AZERTY", sans_fil: true }, ["clavier"], "Clavier mecanique compact"),
 ]);
 
+// product_id is assigned by the catalog service from this counter (atomic $inc)
+market.counters.insertOne({ _id: "product_id", seq: NumberInt(12) });
+
 print("catalog ready: " + market.catalog.countDocuments() + " products");

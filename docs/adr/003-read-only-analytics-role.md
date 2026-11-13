@@ -6,7 +6,7 @@
 
 ## Context
 
-The rule is "a service never reads another service's tables". But the dashboard API and the Spark batch extraction to the lake need to read orders, stock and payments.
+The rule is "a service never reads another service's tables". The Spark batch extraction to the lake needs to read orders, stock and payments in bulk (volet 2 requires batch ingestion).
 
 ## Options considered
 
@@ -18,7 +18,7 @@ The rule is "a service never reads another service's tables". But the dashboard 
 
 ## Decision
 
-A role `analytics_reader` with `SELECT` only on `orders`, `inventory` and `payments`, never on `auth`. Used by the dashboard API and Spark JDBC batch jobs. Services themselves keep strict isolation.
+A role `analytics_reader` with `SELECT` only on `orders`, `inventory` and `payments`, never on `auth`, used **only** by the Spark JDBC batch extraction to the raw zone. It is a data platform job, not a service. The dashboard API reads the remaining stock through the Inventory API, as the brief requires; services keep strict isolation.
 
 ## Consequences
 

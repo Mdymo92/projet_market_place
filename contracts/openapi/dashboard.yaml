@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     Read-only API behind tabs 1 (Vue d'ensemble), 4 (Logistique) and 5 (Observabilite).
-    Reads the lake consumption zone (Delta), PostgreSQL (analytics_reader) and Prometheus.
+    Reads the lake consumption zone (Delta), the Inventory API for remaining stock (never its tables) and Prometheus.
 servers:
   - url: http://localhost:8000
 security:

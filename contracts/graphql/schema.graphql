@@ -39,8 +39,8 @@ input ProductFilter {
   maxPriceCents: Int
 }
 
+"productId is assigned by the service (counter in MongoDB), not by the client"
 input ProductInput {
-  productId: Int!
   name: String!
   category: String!
   priceCents: Int!
@@ -66,9 +66,24 @@ type Query {
   categories: [String!]!
 }
 
+type DeleteResult {
+  productId: Int!
+  "true if deleted, false if the product was archived instead because it was already ordered"
+  deleted: Boolean!
+  status: ProductStatus!
+}
+
+"""
+Errors are returned in `errors[].extensions.code`:
+UNAUTHENTICATED (no or invalid token), FORBIDDEN (role not allowed), NOT_FOUND, BAD_USER_INPUT.
+"""
 type Mutation {
-  "admin, catalog_manager"
+  "admin, catalog_manager. Assigns productId, then creates the stock lines through the Inventory API."
   createProduct(input: ProductInput!): Product!
   "admin, catalog_manager. Publishes a product_updated event to Kafka."
   updateProduct(productId: Int!, input: ProductUpdate!): Product!
+  "admin, catalog_manager. Sets status to inactive: hidden from the shop, kept in past orders."
+  archiveProduct(productId: Int!): Product!
+  "admin, catalog_manager. Deletes only if never ordered (checked through the Orders API), else archives."
+  deleteProduct(productId: Int!): DeleteResult!
 }

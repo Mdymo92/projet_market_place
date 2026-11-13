@@ -2,7 +2,7 @@
 
 Reads (all read-only):
   - Delta tables of the lake consumption zone (KPIs, alerts) -> e.g. with the `deltalake` package
-  - PostgreSQL as analytics_reader (stock, warehouses)
+  - the Inventory API for remaining stock and warehouses (never the inventory tables directly)
   - Prometheus HTTP API (services health)
 Routes and RBAC are wired; data access is TODO (owner: Ilyes, week 4).
 """
@@ -31,7 +31,7 @@ def hourly_orders(_: Principal = Depends(require("dashboard:read"))):
 
 @app.get("/v1/dashboard/low-stock")
 def low_stock(threshold: int = 10, _: Principal = Depends(require("dashboard:ops"))):
-    _todo("stock below threshold joined with product names")
+    _todo("GET inventory /v1/inventory/stock?below=threshold + names from catalog GraphQL")
 
 
 @app.get("/v1/dashboard/alerts")

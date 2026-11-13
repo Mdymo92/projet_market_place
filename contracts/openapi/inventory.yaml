@@ -44,7 +44,7 @@ paths:
 
   /v1/inventory/{product_id}:
     put:
-      summary: Set the stock level of a product in a warehouse (restock, inventory count)
+      summary: Create or set the stock line of a product in a warehouse (new product, restock, inventory count)
       description: "Roles: admin, logistics, service_account"
       parameters:
         - { name: product_id, in: path, required: true, schema: { type: integer } }

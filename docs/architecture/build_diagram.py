@@ -42,9 +42,9 @@ bw = (IN - 48) / 3; cx = [L0 + 16, L0 + 16 + bw + 24, L0 + 16 + 2 * (bw + 24)]
 box(cx[0], 344, bw, 70, "Orders", "commandes · orchestre la Saga")
 box(cx[1], 344, bw, 70, "Inventory", "stocks · entrepôts · réservations")
 box(cx[2], 344, bw, 70, "Payment", "paiement simulé")
-box(cx[0], 454, bw, 70, "Catalog", "GraphQL · produits et prix")
+box(cx[0], 454, bw, 70, "Catalog", "GraphQL · CRUD produits, archivage")
 box(cx[1], 454, bw, 70, "Auth", "login · JWT · rôles")
-box(cx[2], 454, bw, 70, "Dashboard API", "données des onglets 1, 4, 5")
+box(cx[2], 454, bw, 70, "Dashboard API", "onglets 1, 4, 5 · lit le lake et l'API Stock")
 path(f"M{cx[0]+bw} 379 H{cx[1]-2}")
 t(cx[0] + bw + 12, 372, "", 11)
 oc, pc = cx[0] + bw / 2, cx[2] + bw / 2
