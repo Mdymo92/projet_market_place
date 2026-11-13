@@ -12,7 +12,7 @@ Rules:
 | Login | `POST /v1/auth/login` |
 | 1 Vue d'ensemble | `/v1/dashboard/summary`, `/hourly-orders`, `/low-stock`, `/alerts/stream` |
 | 2 Commandes | `GET/POST /v1/orders` |
-| 3 Catalogue | `POST /graphql` |
+| 3 Catalogue | `POST /graphql` (liste + formulaire pour créer, modifier, archiver, supprimer un produit) |
 | 4 Logistique | `GET /v1/warehouses` |
 | 5 Observabilité | `/v1/dashboard/services-health` + link to Grafana |
 
