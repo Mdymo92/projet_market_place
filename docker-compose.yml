@@ -1,0 +1,380 @@
+# Market platform: one command start (see Makefile)
+#   make up        -> core + data + obs (everything)
+#   make up-core   -> databases, Kafka, gateway, services only
+# Profiles: (none) = core, "data" = Spark + lake + generator, "obs" = observability.
+
+name: market
+
+x-service: &service
+  build:
+    context: ./services
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  mem_limit: 256m
+  env_file: .env
+  depends_on:
+    postgres:
+      condition: service_healthy
+    kafka-init:
+      condition: service_completed_successfully
+  networks: [market]
+
+x-service-env: &service-env
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_ISSUER: ${JWT_ISSUER}
+  KAFKA_BOOTSTRAP: kafka:9092
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  LOG_FORMAT: json
+
+services:
+  # ---------------------------------------------------------------- storage
+  postgres:
+    image: postgres:16.4
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD}
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD}
+      PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD}
+      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD}
+    ports: ["5432:5432"]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./db/postgres/explain:/explain:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+    networks: [market]
+
+  mongo:
+    image: mongo:7.0.14
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: market
+      CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+    ports: ["27017:27017"]
+    volumes:
+      - mongo-data:/data/db
+      - ./db/mongo/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      retries: 20
+    networks: [market]
+
+  # ---------------------------------------------------------------- streaming
+  kafka:
+    image: apache/kafka:3.8.0
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms512m
+    ports: ["29092:29092"]
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      retries: 20
+    networks: [market]
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/scripts/create_topics.sh"]
+    volumes:
+      - ./scripts/create_topics.sh:/scripts/create_topics.sh:ro
+    networks: [market]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    restart: unless-stopped
+    mem_limit: 384m
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: market
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports: ["8080:8080"]
+    networks: [market]
+
+  # ---------------------------------------------------------------- gateway
+  kong-config:
+    image: alpine:3.20
+    env_file: .env
+    command: >
+      sh -c "sed -e \"s|__JWT_SECRET__|$${JWT_SECRET}|g\" -e \"s|__JWT_ISSUER__|$${JWT_ISSUER}|g\"
+      /in/kong.yml.tmpl > /out/kong.yml && echo kong config rendered"
+    volumes:
+      - ./gateway/kong.yml.tmpl:/in/kong.yml.tmpl:ro
+      - kong-config:/out
+    networks: [market]
+
+  kong:
+    image: kong:3.7.1
+    restart: unless-stopped
+    mem_limit: 384m
+    depends_on:
+      kong-config:
+        condition: service_completed_successfully
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_STATUS_LISTEN: 0.0.0.0:8100
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    ports:
+      - "8000:8000"
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - kong-config:/kong:ro
+    networks: [market]
+
+  # ---------------------------------------------------------------- services (only reachable through Kong)
+  auth:
+    <<: *service
+    build: { context: ./services, args: { SERVICE: auth } }
+    environment:
+      <<: *service-env
+      SERVICE_NAME: auth
+      OTEL_SERVICE_NAME: auth
+      DATABASE_URL: postgresql://auth_svc:${AUTH_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+
+  orders:
+    <<: *service
+    build: { context: ./services, args: { SERVICE: orders } }
+    environment:
+      <<: *service-env
+      SERVICE_NAME: orders
+      OTEL_SERVICE_NAME: orders
+      DATABASE_URL: postgresql://orders_svc:${ORDERS_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      INVENTORY_URL: http://inventory:8000
+      PAYMENT_URL: http://payment:8000
+      CATALOG_URL: http://catalog:8000
+
+  inventory:
+    <<: *service
+    build: { context: ./services, args: { SERVICE: inventory } }
+    environment:
+      <<: *service-env
+      SERVICE_NAME: inventory
+      OTEL_SERVICE_NAME: inventory
+      DATABASE_URL: postgresql://inventory_svc:${INVENTORY_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+
+  payment:
+    <<: *service
+    build: { context: ./services, args: { SERVICE: payment } }
+    environment:
+      <<: *service-env
+      SERVICE_NAME: payment
+      OTEL_SERVICE_NAME: payment
+      DATABASE_URL: postgresql://payments_svc:${PAYMENTS_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+
+  catalog:
+    <<: *service
+    build: { context: ./services, args: { SERVICE: catalog } }
+    depends_on:
+      mongo:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *service-env
+      SERVICE_NAME: catalog
+      OTEL_SERVICE_NAME: catalog
+      MONGO_URL: mongodb://catalog_svc:${CATALOG_DB_PASSWORD}@mongo:27017/market?authSource=market
+
+  dashboard:
+    <<: *service
+    build: { context: ./services, args: { SERVICE: dashboard } }
+    environment:
+      <<: *service-env
+      SERVICE_NAME: dashboard
+      OTEL_SERVICE_NAME: dashboard
+      DATABASE_URL: postgresql://analytics_reader:${ANALYTICS_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      PROMETHEUS_URL: http://prometheus:9090
+
+  # ---------------------------------------------------------------- data profile: lake + Spark + generator
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    profiles: [data]
+    restart: unless-stopped
+    mem_limit: 512m
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+    networks: [market]
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    profiles: [data]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set lake http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        for b in raw staging curated consumption quarantine checkpoints backups; do mc mb --ignore-existing lake/$$b; done &&
+        echo buckets ready
+    env_file: .env
+    networks: [market]
+
+  spark-streaming:
+    image: apache/spark:3.5.3-scala2.12-java17-python3-ubuntu
+    profiles: [data]
+    restart: unless-stopped
+    mem_limit: 2g
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    env_file: .env
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      PYTHONPATH: /app
+    user: root
+    command: ["/opt/spark/bin/spark-submit", "--properties-file", "/app/conf/spark-defaults.conf", "/app/streaming/jobs/kafka_to_raw.py"]
+    ports: ["4040:4040"]
+    volumes:
+      - ./streaming:/app/streaming:ro
+      - ./lake:/app/lake:ro
+      - ./conf:/app/conf:ro
+      - ivy-cache:/root/.ivy2
+    networks: [market]
+
+  generator:
+    build: ./streaming/generator
+    profiles: [data]
+    restart: unless-stopped
+    mem_limit: 128m
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      EVENTS_PER_SECOND: "20"
+      MODE: normal   # normal | black_friday
+    networks: [market]
+
+  # ---------------------------------------------------------------- obs profile
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    profiles: [obs]
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./observability/otel/config.yaml:/etc/otel/config.yaml:ro
+    networks: [market]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    profiles: [obs]
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["16686:16686"]
+    networks: [market]
+
+  loki:
+    image: grafana/loki:3.2.0
+    profiles: [obs]
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki/config.yaml:/etc/loki/config.yaml:ro
+    networks: [market]
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.8.0
+    profiles: [obs]
+    restart: unless-stopped
+    mem_limit: 64m
+    command: ["--kafka.server=kafka:9092"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [market]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: [obs]
+    restart: unless-stopped
+    mem_limit: 384m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+    ports: ["9090:9090"]
+    networks: [market]
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    profiles: [obs]
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    ports: ["3000:3000"]
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [market]
+
+networks:
+  market: {}
+
+volumes:
+  pg-data:
+  mongo-data:
+  kafka-data:
+  minio-data:
+  kong-config:
+  ivy-cache:
