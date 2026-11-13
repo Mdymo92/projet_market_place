@@ -7,8 +7,8 @@ name: market
 
 x-service: &service
   build:
-    context: ./services
-    dockerfile: Dockerfile
+    context: .
+    dockerfile: services/Dockerfile
   restart: unless-stopped
   mem_limit: 256m
   env_file: .env
@@ -159,7 +159,7 @@ services:
   # ---------------------------------------------------------------- services (only reachable through Kong)
   auth:
     <<: *service
-    build: { context: ./services, args: { SERVICE: auth } }
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: auth } }
     environment:
       <<: *service-env
       SERVICE_NAME: auth
@@ -168,7 +168,7 @@ services:
 
   orders:
     <<: *service
-    build: { context: ./services, args: { SERVICE: orders } }
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: orders } }
     environment:
       <<: *service-env
       SERVICE_NAME: orders
@@ -180,7 +180,7 @@ services:
 
   inventory:
     <<: *service
-    build: { context: ./services, args: { SERVICE: inventory } }
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: inventory } }
     environment:
       <<: *service-env
       SERVICE_NAME: inventory
@@ -189,7 +189,7 @@ services:
 
   payment:
     <<: *service
-    build: { context: ./services, args: { SERVICE: payment } }
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: payment } }
     environment:
       <<: *service-env
       SERVICE_NAME: payment
@@ -198,7 +198,7 @@ services:
 
   catalog:
     <<: *service
-    build: { context: ./services, args: { SERVICE: catalog } }
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: catalog } }
     depends_on:
       mongo:
         condition: service_healthy
@@ -212,7 +212,7 @@ services:
 
   dashboard:
     <<: *service
-    build: { context: ./services, args: { SERVICE: dashboard } }
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: dashboard } }
     environment:
       <<: *service-env
       SERVICE_NAME: dashboard

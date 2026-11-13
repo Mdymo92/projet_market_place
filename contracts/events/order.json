@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "market/events/order.json",
+  "title": "order",
+  "description": "Order lifecycle published by the orders service. Topic: `orders`. Kafka message key: `order_id`.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id, used for deduplication (exactly-once on the consumer side)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "order_created",
+        "order_paid",
+        "order_payment_failed",
+        "order_cancelled"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event time, used by Spark watermarks"
+    },
+    "producer": {
+      "type": "string",
+      "examples": [
+        "orders",
+        "generator"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "order_id",
+        "customer_id",
+        "status",
+        "total_cents"
+      ],
+      "properties": {
+        "order_id": {
+          "type": "integer"
+        },
+        "customer_id": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "total_cents": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "product_id",
+              "quantity",
+              "unit_price_cents"
+            ],
+            "properties": {
+              "product_id": {
+                "type": "integer"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "unit_price_cents": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

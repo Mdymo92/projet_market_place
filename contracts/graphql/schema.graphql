@@ -1,0 +1,74 @@
+"""
+Market catalog (tab Catalogue). Served by the catalog service at POST /graphql, behind Kong.
+Read: every authenticated role. Write: admin and catalog_manager (checked in each resolver).
+Prices are integers in cents. `attributes` is free per category (sizes, battery life, colors...).
+"""
+scalar JSON
+scalar DateTime
+
+enum ProductStatus {
+  active
+  inactive
+}
+
+type Product {
+  productId: Int!
+  name: String!
+  category: String!
+  priceCents: Int!
+  status: ProductStatus!
+  tags: [String!]!
+  description: String
+  "Category-specific fields, e.g. { pointure: [40, 41], couleur: [\"noir\"] }"
+  attributes: JSON
+  "Total units in all warehouses (from the inventory service)"
+  stock: Int
+  indexedAt: DateTime
+}
+
+type ProductPage {
+  items: [Product!]!
+  total: Int!
+}
+
+input ProductFilter {
+  category: String
+  status: ProductStatus
+  "Full text search on name and description"
+  search: String
+  maxPriceCents: Int
+}
+
+input ProductInput {
+  productId: Int!
+  name: String!
+  category: String!
+  priceCents: Int!
+  status: ProductStatus = active
+  tags: [String!]
+  description: String
+  attributes: JSON
+}
+
+input ProductUpdate {
+  name: String
+  category: String
+  priceCents: Int
+  status: ProductStatus
+  tags: [String!]
+  description: String
+  attributes: JSON
+}
+
+type Query {
+  products(filter: ProductFilter, limit: Int = 20, offset: Int = 0): ProductPage!
+  product(productId: Int!): Product
+  categories: [String!]!
+}
+
+type Mutation {
+  "admin, catalog_manager"
+  createProduct(input: ProductInput!): Product!
+  "admin, catalog_manager. Publishes a product_updated event to Kafka."
+  updateProduct(productId: Int!, input: ProductUpdate!): Product!
+}

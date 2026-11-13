@@ -1,0 +1,6 @@
+-r services/requirements.txt
+pytest==8.3.3
+ruff==0.6.9
+jsonschema==4.23.0
+openapi-spec-validator==0.7.1
+PyYAML==6.0.2

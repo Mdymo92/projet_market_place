@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "market/events/payment.json",
+  "title": "payment",
+  "description": "Payment outcome published by the payment service. Topic: `payments`. Kafka message key: `order_id`.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id, used for deduplication (exactly-once on the consumer side)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "payment_succeeded",
+        "payment_failed"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event time, used by Spark watermarks"
+    },
+    "producer": {
+      "type": "string",
+      "examples": [
+        "orders",
+        "generator"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "order_id",
+        "amount_cents"
+      ],
+      "properties": {
+        "payment_id": {
+          "type": "integer"
+        },
+        "order_id": {
+          "type": "integer"
+        },
+        "amount_cents": {
+          "type": "integer"
+        },
+        "failure_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,151 @@
+openapi: 3.1.0
+info:
+  title: Market Dashboard API
+  version: 1.0.0
+  description: |
+    Read-only API behind tabs 1 (Vue d'ensemble), 4 (Logistique) and 5 (Observabilite).
+    Reads the lake consumption zone (Delta), PostgreSQL (analytics_reader) and Prometheus.
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/dashboard/summary:
+    get:
+      summary: Today's KPIs
+      description: "Roles: admin, analyst, logistics, catalog_manager"
+      responses:
+        "200":
+          description: KPIs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Summary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/dashboard/hourly-orders:
+    get:
+      summary: Orders per hour for today
+      description: "Roles: admin, analyst, logistics, catalog_manager"
+      responses:
+        "200":
+          description: One point per hour
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    hour: { type: string, format: date-time }
+                    orders: { type: integer }
+                    revenue_cents: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/dashboard/low-stock:
+    get:
+      summary: Products close to stockout
+      description: "Roles: admin, analyst, logistics"
+      parameters:
+        - { name: threshold, in: query, schema: { type: integer, default: 10 } }
+      responses:
+        "200":
+          description: Low stock lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    product_id: { type: integer }
+                    product_name: { type: string }
+                    warehouse: { type: string }
+                    quantity: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/dashboard/alerts:
+    get:
+      summary: Latest alerts from the streaming pipeline
+      description: "Roles: admin, analyst, logistics"
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200":
+          description: Alerts, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Alert" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/dashboard/alerts/stream:
+    get:
+      summary: Live alerts (Server-Sent Events)
+      description: "Roles: admin, analyst, logistics. One `data:` line per Alert as JSON."
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/dashboard/services-health:
+    get:
+      summary: Health of each service (tab Observabilite)
+      description: "Roles: admin"
+      responses:
+        "200":
+          description: One line per service
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    service: { type: string }
+                    status: { type: string, enum: [ok, degraded, down] }
+                    p95_latency_ms: { type: number }
+                    error_rate: { type: number }
+                    requests_per_s: { type: number }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Role not allowed
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Summary:
+      type: object
+      properties:
+        orders_today: { type: integer }
+        revenue_today_cents: { type: integer }
+        average_basket_cents: { type: integer }
+        stockout_rate: { type: number, description: Share of product lines at 0 }
+        computed_at: { type: string, format: date-time }
+    Alert:
+      type: object
+      required: [alert_id, type, severity, message, at]
+      properties:
+        alert_id: { type: string, description: Deterministic id, used to drop duplicates }
+        type: { type: string, enum: [low_stock, payment_failure, order_spike, abandoned_cart, warehouse_saturation] }
+        severity: { type: string, enum: [info, warning, critical] }
+        message: { type: string }
+        at: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string }
+        request_id: { type: string }

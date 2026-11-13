@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "market/events/shipment.json",
+  "title": "shipment",
+  "description": "Logistics events (simulated by the generator). Topic: `shipments`. Kafka message key: `warehouse_id`.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id, used for deduplication (exactly-once on the consumer side)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "shipment_prepared",
+        "shipment_shipped",
+        "shipment_delivered"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event time, used by Spark watermarks"
+    },
+    "producer": {
+      "type": "string",
+      "examples": [
+        "orders",
+        "generator"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "shipment_id",
+        "order_id",
+        "warehouse_id",
+        "units"
+      ],
+      "properties": {
+        "shipment_id": {
+          "type": "string"
+        },
+        "order_id": {
+          "type": "integer"
+        },
+        "warehouse_id": {
+          "type": "integer"
+        },
+        "units": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
