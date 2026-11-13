@@ -24,11 +24,14 @@ MID = (L0 + L1) / 2
 GAP = (L1 + R0) / 2
 RC = (R0 + R1) / 2
 # row A
+t(MID, 92, "CONSOMMATEURS INTERNES", 11, 700, ACC, "middle", 'letter-spacing="1"')
+t(RC, 92, "CONSOMMATEURS INTERNES", 11, 700, ACC, "middle", 'letter-spacing="1"')
 box(MID - 260, 100, 520, 64, "Application web Market", "React + Vite · login + 5 onglets")
 box(R0, 100, R1 - R0, 64, "Grafana", "tableaux de bord et alertes")
 path(f"M{MID} 164 V198", "HTTPS + JWT", MID + 8, 186)
 # row B
 box(L0, 200, L1 - L0, 64, "Kong · API gateway", ":8000 · vérification JWT · rate limiting · routage /v1 et /graphql", hi=True)
+t(RC, 194, "SOURCES", 11, 700, ACC, "middle", 'letter-spacing="1"')
 box(R0, 200, R1 - R0, 64, "Générateur d'événements", "navigation, paniers, expéditions")
 path(f"M{MID} 264 V298")
 # services container
@@ -39,12 +42,14 @@ bw = (IN - 48) / 3; cx = [L0 + 16, L0 + 16 + bw + 24, L0 + 16 + 2 * (bw + 24)]
 box(cx[0], 344, bw, 70, "Orders", "commandes · orchestre la Saga")
 box(cx[1], 344, bw, 70, "Inventory", "stocks · entrepôts · réservations")
 box(cx[2], 344, bw, 70, "Payment", "paiement simulé")
-box(cx[0], 454, bw, 70, "Auth", "login · JWT · rôles")
-box(cx[1], 454, bw, 70, "Catalog", "GraphQL")
+box(cx[0], 454, bw, 70, "Catalog", "GraphQL · produits et prix")
+box(cx[1], 454, bw, 70, "Auth", "login · JWT · rôles")
 box(cx[2], 454, bw, 70, "Dashboard API", "données des onglets 1, 4, 5")
 path(f"M{cx[0]+bw} 379 H{cx[1]-2}")
 t(cx[0] + bw + 12, 372, "", 11)
 oc, pc = cx[0] + bw / 2, cx[2] + bw / 2
+qx = cx[0] + bw * 0.25
+path(f"M{qx} 414 V452", "prix", qx + 6, 440)
 path(f"M{oc} 414 V430 H{pc} V416", "Saga : réserve le stock, paie, libère si échec", (oc + pc) / 2, 446, "middle")
 # right column streaming
 box(R0, 344, R1 - R0, 70, "Apache Kafka (KRaft)", "clicks · orders · payments · inventory · shipments · alerts")
@@ -67,19 +72,20 @@ t(RC, 680, "qualité + quarantaine · catalogue de données", 12, 400, GREY, "mi
 t(RC, 700, "buckets S3 · tables Delta partitionnées par date", 12, 400, GREY, "middle")
 path(f"M{RC} 524 V578")
 # databases
-r(cx[0], 600, bw, 120)
-t(cx[0] + bw / 2, 626, "PostgreSQL", 15, 700, a="middle")
+r(cx[1], 600, bw, 120)
+t(cx[1] + bw / 2, 626, "PostgreSQL", 15, 700, a="middle")
 cw = (bw - 40) / 2
 for i, s in enumerate(["schéma auth", "schéma orders", "schéma inventory", "schéma payments"]):
-    chip(cx[0] + 16 + (i % 2) * (cw + 8), 642 + (i // 2) * 32, cw, s)
-r(cx[1], 600, bw, 120)
-t(cx[1] + bw / 2, 646, "MongoDB", 15, 700, a="middle")
-t(cx[1] + bw / 2, 668, "collection catalog", 12, 400, GREY, "middle")
-t(cx[1] + bw / 2, 688, "attributs libres par catégorie", 12, 400, GREY, "middle")
+    chip(cx[1] + 16 + (i % 2) * (cw + 8), 642 + (i // 2) * 32, cw, s)
+r(cx[0], 600, bw, 120)
+t(cx[0] + bw / 2, 646, "MongoDB", 15, 700, a="middle")
+t(cx[0] + bw / 2, 668, "collection catalog", 12, 400, GREY, "middle")
+t(cx[0] + bw / 2, 688, "attributs libres par catégorie", 12, 400, GREY, "middle")
 box(cx[2], 640, bw, 70, "Spark batch", "extraction JDBC")
-path(f"M{oc} 544 V598", "un schéma par service", oc + 8, 576)
-path(f"M{cx[1]+bw/2} 544 V598", "catalogue", cx[1] + bw / 2 + 8, 576)
-path(f"M{oc} 720 V744 H{pc} V712", "lecture seule", (oc + pc) / 2 + 60, 760, "middle")
+path(f"M{cx[1]+bw/2} 544 V598", "un schéma et un rôle par service", cx[1] + bw / 2 + 8, 576)
+path(f"M{oc} 544 V598", "catalogue", oc + 8, 576)
+mc = cx[1] + bw / 2
+path(f"M{mc} 720 V744 H{pc} V712", "lecture seule", (mc + pc) / 2, 760, "middle")
 path(f"M{cx[2]+bw} 675 H{R0-2}", "vers raw", (cx[2] + bw + R0) / 2, 667, "middle")
 # lake -> dashboard (reads consumption)
 path(f"M{R0} 610 H{GAP} V489 H{cx[2]+bw+2}", "lit", GAP + 6, 560, dash=True)

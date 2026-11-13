@@ -16,6 +16,7 @@ app = create_app("inventory", "Market Inventory API")
 
 
 class StockSet(BaseModel):
+    warehouse_id: int
     quantity: int = Field(ge=0)
 
 
@@ -43,8 +44,8 @@ def list_stock(product_id: int | None = None, below: int | None = None, _: Princ
     _todo("stock lines")
 
 
-@app.patch("/v1/inventory/stock/{product_id}/{warehouse_id}")
-def set_stock(product_id: int, warehouse_id: int, body: StockSet, _: Principal = Depends(require("stock:write"))):
+@app.put("/v1/inventory/{product_id}")
+def set_stock(product_id: int, body: StockSet, _: Principal = Depends(require("stock:write"))):
     _todo("set stock level + stock_adjusted event")
 
 

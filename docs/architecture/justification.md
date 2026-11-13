@@ -43,7 +43,7 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
 
 ### Authentification : JWT de 15 minutes et refresh token
 
-- **Pourquoi :** le JWT est sans état : Kong et chaque service le vérifient avec la même clé, sans appeler le service Auth à chaque requête. La durée courte limite l'impact d'un vol ; le refresh token est à usage unique et stocké haché en base. Les mots de passe sont hachés avec bcrypt.
+- **Pourquoi :** le JWT est sans état : Kong et chaque service le vérifient avec la même clé, sans appeler le service Auth à chaque requête. Il contient l'identifiant de l'utilisateur (`sub`), ses rôles et sa date d'expiration, jamais son email : un JWT est signé mais lisible. La durée courte limite l'impact d'un vol ; le refresh token est à usage unique et stocké haché en base. Les mots de passe sont hachés avec bcrypt.
 - **Comptes de service :** le service Orders obtient son propre token (rôle `service_account`) pour appeler Inventory et Payment.
 - **Écarté :** des sessions côté serveur, qu'il faudrait partager entre tous les services.
 
@@ -59,7 +59,7 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
 
 ### Saga orchestrée par le service Orders
 
-- **Pourquoi :** une commande touche trois services qui ont chacun leur base. Une transaction unique est impossible ; la Saga enchaîne les étapes (réserver le stock, payer, confirmer) et compense en cas d'échec (paiement refusé au-delà de 200 €, stock libéré). Chaque étape est tracée dans `orders.saga_log`.
+- **Pourquoi :** une commande touche trois services qui ont chacun leur base. Orders appelle aussi Catalog pour vérifier que le `product_id` existe et relire le prix au moment de la commande. Une transaction unique est impossible ; la Saga enchaîne les étapes (réserver le stock, payer, confirmer) et compense en cas d'échec (paiement refusé au-delà de 200 €, stock libéré). Chaque étape est tracée dans `orders.saga_log`.
 - **Orchestration plutôt que chorégraphie :** le déroulé est lisible à un seul endroit, plus simple à tester et à expliquer.
 - **Écarté :** la transaction distribuée en deux phases (2PC), lente et fragile si un participant tombe.
 
@@ -128,7 +128,21 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
 - **Rôle :** extraction périodique de PostgreSQL vers la zone raw (JDBC, rôle en lecture seule), puis promotion de zone en zone.
 - **Pourquoi :** même moteur et même code que le streaming.
 
-## 5. Observabilité
+## 5. Où le temps réel est vraiment utile
+
+Le streaming coûte plus cher qu'un traitement par lot (plus de ressources, de réglages et de surveillance). On ne l'utilise que là où l'attente se paie, en suivant le tableau du sujet.
+
+| Rôle | Besoin | Choix | Indicateurs suivis |
+| --- | --- | --- | --- |
+| service_account (paiement) | Détecter un échec de paiement avant la fin de la commande | Streaming, événements traités au fil de l'eau, exactly-once | Latence p99 < 2 s, aucun doublon ni perte, reprise < 30 s |
+| logistics | Voir une rupture proche ou un entrepôt au-dessus de 90 % | Streaming, fenêtres glissantes d'une minute, Kafka partitionné par `warehouse_id` | Latence p95 < 5 s, débit en messages par seconde |
+| admin | Savoir en quelques secondes qu'un service ou Kafka se dégrade | Métriques collectées toutes les 5 s, alerte sur le lag | Lag < 1 000 messages, délai panne vers alerte < 10 s |
+| analyst | Ventes du jour, panier abandonné, pic de commandes | Micro-batch de 30 s à 1 min, agrégats pré-calculés, fenêtre de session de 30 min pour les paniers | Fraîcheur < 60 s, API p95 < 500 ms |
+| catalog_manager | Voir un changement de prix pris en compte | Pas de streaming : une API classique suffit, un événement `product_updated` met à jour le lake | Prise en compte < 1 min |
+
+La démonstration temps réel porte sur la logistique (rupture de stock proche) et le paiement, là où le besoin est le plus fort. Pour l'analyste et le catalogue, ne pas faire de streaming est un choix assumé, pas un oubli.
+
+## 6. Observabilité
 
 | Brique | Rôle | Pourquoi | Écarté |
 | --- | --- | --- | --- |
@@ -136,12 +150,12 @@ Ce document explique pourquoi chaque brique de la plateforme Market a été choi
 | OpenTelemetry + Jaeger | Traces distribuées | Suivre une requête de Kong à Orders, Inventory et Payment ; standard ouvert, indépendant de l'outil d'affichage | Zipkin, moins complet |
 | Loki | Logs | Logs JSON consultables dans Grafana, léger | Elasticsearch, gourmand en mémoire |
 
-## 6. Déploiement : Docker Compose
+## 7. Déploiement : Docker Compose
 
 - **Pourquoi :** le sujet exige un démarrage en une commande. Trois profils (core, data, obs) permettent de lancer une partie seulement sur un ordinateur limité en mémoire.
 - **Écarté :** Kubernetes, adapté à la production mais disproportionné pour une démonstration sur un ordinateur portable.
 
-## 7. Limites assumées
+## 8. Limites assumées
 
 - **Un seul nœud** pour chaque composant (PostgreSQL, Kafka, MinIO) : pas de haute disponibilité, acceptable pour une démonstration et mentionné comme évolution.
 - **Paiement simulé** : la règle des 200 € remplace un vrai prestataire.

@@ -52,7 +52,7 @@ def _issue_pair(user_id: int, email: str, roles: list[str]) -> dict:
     refresh = secrets.token_urlsafe(48)
     db.store_refresh_token(user_id, _sha256(refresh), datetime.now(UTC) + timedelta(days=s.refresh_ttl_days))
     return {
-        "access_token": create_access_token(email, roles),
+        "access_token": create_access_token(str(user_id), roles),  # sub = id: no email in the token
         "refresh_token": refresh,
         "token_type": "bearer",
         "expires_in": s.jwt_ttl_minutes * 60,
@@ -91,8 +91,12 @@ def service_token(body: TokenRequest, x_api_key: str = Header(alias="X-API-Key")
 
 @app.get("/v1/auth/me")
 def me(principal: Principal = Depends(current_principal)):
-    user = db.get_user_by_email(principal.subject)
-    return {"id": user["id"] if user else None, "email": principal.subject, "roles": list(principal.roles)}
+    if principal.subject.startswith("svc:"):
+        return {"id": None, "email": None, "roles": list(principal.roles)}
+    user = db.get_user_by_id(int(principal.subject))
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "unknown user")
+    return {"id": user["id"], "email": user["email"], "roles": user["roles"]}
 
 
 @app.get("/v1/admin/users")
@@ -105,3 +109,15 @@ def create_user(body: UserCreate, request: Request, _: Principal = Depends(requi
     if db.get_user_by_email(body.email):
         raise HTTPException(status.HTTP_409_CONFLICT, "email already used")
     return db.create_user(body.email, hash_password(body.password), body.roles)
+
+
+class RolesAssign(BaseModel):
+    user_id: int
+    roles: list[str] = Field(min_length=1)
+
+
+@app.post("/v1/admin/roles")
+def assign_roles(body: RolesAssign, _: Principal = Depends(require("roles:write"))):
+    if not db.get_user_by_id(body.user_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown user")
+    return db.set_roles(body.user_id, body.roles)

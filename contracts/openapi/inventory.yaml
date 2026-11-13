@@ -42,21 +42,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /v1/inventory/stock/{product_id}/{warehouse_id}:
-    patch:
-      summary: Set a stock level (restock, inventory count)
-      description: "Roles: admin, logistics"
+  /v1/inventory/{product_id}:
+    put:
+      summary: Set the stock level of a product in a warehouse (restock, inventory count)
+      description: "Roles: admin, logistics, service_account"
       parameters:
         - { name: product_id, in: path, required: true, schema: { type: integer } }
-        - { name: warehouse_id, in: path, required: true, schema: { type: integer } }
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [quantity]
+              required: [warehouse_id, quantity]
               properties:
+                warehouse_id: { type: integer }
                 quantity: { type: integer, minimum: 0 }
       responses:
         "200":

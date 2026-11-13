@@ -13,20 +13,21 @@ SERVICE = "service_account"
 ALL_ROLES = (ADMIN, CATALOG_MANAGER, ANALYST, LOGISTICS, SERVICE)
 HUMAN_ROLES = (ADMIN, CATALOG_MANAGER, ANALYST, LOGISTICS)
 
-# action -> roles allowed
+# action -> roles allowed. Follows the rights matrix of the brief (section "Matrice des droits").
 MATRIX: dict[str, tuple[str, ...]] = {
     # auth
     "users:read": (ADMIN,),
     "users:write": (ADMIN,),
+    "roles:write": (ADMIN,),
     # orders
-    "orders:read": (ADMIN, ANALYST, LOGISTICS),
+    "orders:read": (ADMIN, ANALYST, LOGISTICS, SERVICE),
     "orders:create": (ADMIN, SERVICE),
     # catalog
     "catalog:read": ALL_ROLES,
     "catalog:write": (ADMIN, CATALOG_MANAGER),
     # inventory
     "stock:read": (ADMIN, LOGISTICS, ANALYST),
-    "stock:write": (ADMIN, LOGISTICS),
+    "stock:write": (ADMIN, LOGISTICS, SERVICE),
     "stock:reserve": (ADMIN, SERVICE),
     # payments
     "payments:create": (SERVICE,),

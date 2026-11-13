@@ -38,6 +38,22 @@ def get_user_by_email(email: str) -> dict | None:
         return conn.execute(_USER_SQL + " WHERE u.email = %s GROUP BY u.id", (email,)).fetchone()
 
 
+def get_user_by_id(user_id: int) -> dict | None:
+    with pool().connection() as conn:
+        return conn.execute(_USER_SQL + " WHERE u.id = %s GROUP BY u.id", (user_id,)).fetchone()
+
+
+def set_roles(user_id: int, roles: list[str]) -> dict:
+    with pool().connection() as conn, conn.transaction():
+        conn.execute("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
+        conn.execute(
+            "INSERT INTO user_roles (user_id, role_id) SELECT %s, id FROM roles WHERE name = ANY(%s)",
+            (user_id, roles),
+        )
+        row = conn.execute(_USER_SQL + " WHERE u.id = %s GROUP BY u.id", (user_id,)).fetchone()
+    return {"id": row["id"], "email": row["email"], "roles": row["roles"]}
+
+
 def list_users() -> list[dict]:
     with pool().connection() as conn:
         rows = conn.execute(_USER_SQL + " GROUP BY u.id ORDER BY u.id").fetchall()

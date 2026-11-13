@@ -1,16 +1,16 @@
 # Roles and rights (RBAC)
 
-Source of truth in code: `services/common/market_common/rbac.py`. Kong refuses a missing or expired token (401); each service refuses a role that is not allowed (403) and logs the refusal (who, what, when).
+Source of truth in code: `services/common/market_common/rbac.py`. It follows the rights matrix of the brief; `tests/unit/test_rbac.py` checks it row by row. Kong refuses a missing or expired token (401); each service refuses a role that is not allowed (403) and logs the refusal (who, what, when).
 
 | Action | admin | catalog_manager | analyst | logistics | service_account |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| Read / create users | ✓ | | | | |
-| Read orders | ✓ | | ✓ | ✓ | |
+| Create users, assign roles (`POST /v1/admin/users`, `/v1/admin/roles`) | ✓ | | | | |
+| Read orders (`GET /v1/orders`) | ✓ | | ✓ | ✓ | ✓ |
 | Create an order | ✓ | | | | ✓ |
 | Read catalog | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Create / edit products | ✓ | ✓ | | | |
 | Read stock and warehouses | ✓ | | ✓ | ✓ | |
-| Change stock | ✓ | | | ✓ | |
+| Change stock (`PUT /v1/inventory/{id}`) | ✓ | | | ✓ | ✓ |
 | Reserve / release stock (Saga) | ✓ | | | | ✓ |
 | Create a payment | | | | | ✓ |
 | Read payments | ✓ | | ✓ | | |
