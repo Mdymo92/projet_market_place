@@ -1,0 +1,157 @@
+openapi: 3.1.0
+info:
+  title: Market Orders API
+  version: 1.0.0
+  description: |
+    Orders and their Saga: reserve stock -> pay -> confirm, or release stock if payment fails.
+    POST is idempotent through the `Idempotency-Key` header: the same key returns the same order.
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/orders:
+    get:
+      summary: Recent orders (tab Commandes)
+      description: "Roles: admin, analyst, logistics"
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/OrderStatus" } }
+        - { name: customer_id, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: before, in: query, description: Cursor (created_at of the last item), schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Orders, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Place an order (runs the Saga)
+      description: "Roles: admin, service_account"
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrderCreate" }
+      responses:
+        "201":
+          description: Order created. Status is `paid` or `payment_failed` (stock released).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "200":
+          description: Same Idempotency-Key already used, the existing order is returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Not enough stock
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { description: Invalid body }
+        "503":
+          description: A dependency is down (circuit breaker open), retry later
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/orders/{order_id}:
+    get:
+      summary: One order with its lines and Saga trace
+      description: "Roles: admin, analyst, logistics"
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Not found }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Role not allowed
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [pending, paid, preparing, payment_failed, delivered, cancelled]
+    OrderItemCreate:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id: { type: integer, minimum: 1 }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+    OrderCreate:
+      type: object
+      required: [customer_id, items]
+      properties:
+        customer_id: { type: integer }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/OrderItemCreate" }
+    OrderItem:
+      allOf:
+        - $ref: "#/components/schemas/OrderItemCreate"
+        - type: object
+          required: [unit_price_cents]
+          properties:
+            unit_price_cents: { type: integer }
+    Order:
+      type: object
+      required: [id, reference, customer_id, status, total_cents, created_at]
+      properties:
+        id: { type: integer }
+        reference: { type: string, examples: ["CMD-2026-000123"] }
+        customer_id: { type: integer }
+        customer_name: { type: string }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        total_cents: { type: integer }
+        created_at: { type: string, format: date-time }
+    SagaStep:
+      type: object
+      properties:
+        step: { type: string, enum: [reserve_stock, pay, release_stock, confirm] }
+        outcome: { type: string, enum: [ok, failed, compensated] }
+        detail: { type: string }
+        at: { type: string, format: date-time }
+    OrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/Order"
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/OrderItem" }
+            saga:
+              type: array
+              items: { $ref: "#/components/schemas/SagaStep" }
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string }
+        request_id: { type: string }

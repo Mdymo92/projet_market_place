@@ -1,0 +1,174 @@
+openapi: 3.1.0
+info:
+  title: Market Inventory API
+  version: 1.0.0
+  description: Warehouses, stock levels and stock reservations used by the order Saga.
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/warehouses:
+    get:
+      summary: Warehouses with fill rate (tab Logistique)
+      description: "Roles: admin, logistics, analyst"
+      responses:
+        "200":
+          description: Warehouses
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Warehouse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/inventory/stock:
+    get:
+      summary: Stock per product and warehouse
+      description: "Roles: admin, logistics, analyst"
+      parameters:
+        - { name: product_id, in: query, schema: { type: integer } }
+        - { name: below, in: query, description: Only lines with quantity below this value, schema: { type: integer } }
+      responses:
+        "200":
+          description: Stock lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StockLine" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/inventory/{product_id}:
+    put:
+      summary: Create or set the stock line of a product in a warehouse (new product, restock, inventory count)
+      description: "Roles: admin, logistics, service_account"
+      parameters:
+        - { name: product_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [warehouse_id, quantity]
+              properties:
+                warehouse_id: { type: integer }
+                quantity: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Updated line
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StockLine" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unknown product or warehouse }
+
+  /v1/inventory/reservations:
+    post:
+      summary: Reserve stock for an order (Saga step 1)
+      description: "Roles: service_account, admin. Idempotent on Idempotency-Key."
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, items]
+              properties:
+                order_id: { type: integer }
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [product_id, quantity]
+                    properties:
+                      product_id: { type: integer }
+                      quantity: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Reserved
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Reservation" }
+        "200": { description: "Already reserved with this key, same result returned" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "Not enough stock, nothing reserved" }
+
+  /v1/inventory/reservations/{order_id}/release:
+    post:
+      summary: Release the stock of an order (Saga compensation)
+      description: "Roles: service_account, admin. Releasing twice has no extra effect."
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Released (or already released) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/inventory/reservations/{order_id}/commit:
+    post:
+      summary: Confirm the reservation after payment (Saga final step)
+      description: "Roles: service_account, admin"
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Committed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Role not allowed
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Warehouse:
+      type: object
+      required: [id, name, capacity_units, stored_units, fill_rate, status]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        capacity_units: { type: integer }
+        stored_units: { type: integer }
+        fill_rate: { type: number, description: "0 to 1", examples: [0.72] }
+        status: { type: string, enum: [normal, near_saturation], description: near_saturation above 0.9 }
+    StockLine:
+      type: object
+      required: [product_id, warehouse_id, quantity]
+      properties:
+        product_id: { type: integer }
+        warehouse_id: { type: integer }
+        quantity: { type: integer }
+        reserved: { type: integer }
+        updated_at: { type: string, format: date-time }
+    Reservation:
+      type: object
+      properties:
+        id: { type: integer }
+        order_id: { type: integer }
+        product_id: { type: integer }
+        warehouse_id: { type: integer }
+        quantity: { type: integer }
+        status: { type: string, enum: [reserved, committed, released] }
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string }
+        request_id: { type: string }

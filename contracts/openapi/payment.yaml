@@ -1,0 +1,81 @@
+openapi: 3.1.0
+info:
+  title: Market Payment API
+  version: 1.0.0
+  description: |
+    Simulated payment. Any amount above 200 EUR (20000 cents) is refused, which triggers
+    the Saga compensation in the orders service.
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/payments:
+    post:
+      summary: Pay an order (Saga step 2)
+      description: "Roles: service_account. Idempotent on Idempotency-Key."
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, amount_cents]
+              properties:
+                order_id: { type: integer }
+                amount_cents: { type: integer, minimum: 0 }
+      responses:
+        "201":
+          description: Payment recorded. Check `status` (succeeded or failed).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "200": { description: "Same key already used, same payment returned" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      summary: Payments of an order
+      description: "Roles: admin, analyst"
+      parameters:
+        - { name: order_id, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Payment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  responses:
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Role not allowed
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Payment:
+      type: object
+      required: [id, order_id, amount_cents, status, created_at]
+      properties:
+        id: { type: integer }
+        order_id: { type: integer }
+        amount_cents: { type: integer }
+        status: { type: string, enum: [succeeded, failed, refunded] }
+        failure_reason: { type: string, examples: ["amount_above_limit"] }
+        created_at: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string }
+        request_id: { type: string }

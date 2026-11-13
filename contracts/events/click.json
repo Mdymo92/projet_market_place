@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "market/events/click.json",
+  "title": "click",
+  "description": "Browsing activity from the storefront (simulated by the generator). Topic: `clicks`. Kafka message key: `session_id`.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id, used for deduplication (exactly-once on the consumer side)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "page_view",
+        "product_view",
+        "add_to_cart",
+        "remove_from_cart",
+        "checkout_started"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event time, used by Spark watermarks"
+    },
+    "producer": {
+      "type": "string",
+      "examples": [
+        "orders",
+        "generator"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "page"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "customer_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "product_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "page": {
+          "type": "string"
+        },
+        "device": {
+          "enum": [
+            "mobile",
+            "desktop",
+            "tablet"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

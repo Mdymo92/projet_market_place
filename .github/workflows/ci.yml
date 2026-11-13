@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, scaffold]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check . && ruff format --check .
+
+      - name: Unit and contract tests
+        run: python -m pytest -q
+
+  database-scripts:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_USER: market_admin
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: market
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U market_admin" --health-interval 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: market_admin
+      PGPASSWORD: ci-password
+      POSTGRES_USER: market_admin
+      POSTGRES_DB: market
+      AUTH_DB_PASSWORD: ci-auth
+      ORDERS_DB_PASSWORD: ci-orders
+      INVENTORY_DB_PASSWORD: ci-inventory
+      PAYMENTS_DB_PASSWORD: ci-payments
+      ANALYTICS_DB_PASSWORD: ci-analytics
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run init scripts in order
+        working-directory: db/postgres/init
+        run: |
+          bash 00_roles.sh
+          for f in 0[1-9]_*.sql 1*_*.sql; do psql -v ON_ERROR_STOP=1 -d market -f "$f"; done
+      - name: Each service only sees its own schema
+        run: |
+          PGPASSWORD=ci-orders psql -h localhost -U orders_svc -d market -c "SELECT count(*) FROM customers"
+          if PGPASSWORD=ci-orders psql -h localhost -U orders_svc -d market -c "SELECT * FROM inventory.stock"; then
+            echo "orders_svc must not read inventory" && exit 1
+          fi
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker-compose.yml is valid
+        run: cp .env.example .env && docker compose --profile data --profile obs config --quiet
+      - name: Service images build
+        run: docker compose build auth orders

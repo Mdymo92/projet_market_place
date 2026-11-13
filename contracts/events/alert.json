@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "market/events/alert.json",
+  "title": "alert",
+  "description": "Alerts computed by Spark Structured Streaming; alert_id is deterministic so the dashboard drops duplicates. Topic: `alerts`. Kafka message key: `alert_id`.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id, used for deduplication (exactly-once on the consumer side)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "low_stock",
+        "payment_failure",
+        "order_spike",
+        "abandoned_cart",
+        "warehouse_saturation"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event time, used by Spark watermarks"
+    },
+    "producer": {
+      "type": "string",
+      "examples": [
+        "orders",
+        "generator"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "alert_id",
+        "severity",
+        "message"
+      ],
+      "properties": {
+        "alert_id": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "critical"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "window_start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "window_end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "context": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "market/events/stock_changed.json",
+  "title": "stock_changed",
+  "description": "Stock movement published by the inventory service. Topic: `inventory`. Kafka message key: `warehouse_id`.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id, used for deduplication (exactly-once on the consumer side)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "stock_reserved",
+        "stock_released",
+        "stock_committed",
+        "stock_adjusted"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event time, used by Spark watermarks"
+    },
+    "producer": {
+      "type": "string",
+      "examples": [
+        "orders",
+        "generator"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "product_id",
+        "warehouse_id",
+        "delta",
+        "quantity_after"
+      ],
+      "properties": {
+        "product_id": {
+          "type": "integer"
+        },
+        "warehouse_id": {
+          "type": "integer"
+        },
+        "delta": {
+          "type": "integer"
+        },
+        "quantity_after": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "order_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

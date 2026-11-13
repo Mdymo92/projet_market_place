@@ -1,0 +1,5 @@
+# Scripts and configs are mounted into Linux containers: keep LF line endings,
+# even when the repo is cloned on Windows (git autocrlf would break bash scripts).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
